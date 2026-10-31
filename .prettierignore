@@ -1,0 +1,12 @@
+.next
+node_modules
+dist
+build
+package-lock.json
+*.db
+*.db-journal
+dev.db
+dev.db-journal
+.env
+.env*.local
+

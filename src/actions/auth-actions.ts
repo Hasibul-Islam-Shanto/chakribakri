@@ -175,3 +175,7 @@ export const handleLogoutAction = async (): Promise<void> => {
   userSession.destroy();
   redirect('/login');
 };
+
+export const signIn = handleSignInAction;
+export const signUp = handleSignUpAction;
+export const logout = handleLogoutAction;

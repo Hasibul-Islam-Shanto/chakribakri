@@ -1,9 +1,11 @@
 'use server';
 
 import bcrypt from 'bcryptjs';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCurrentSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
 
 export interface AuthActionResult {
   hasError: boolean;
@@ -11,10 +13,46 @@ export interface AuthActionResult {
   isSuccess?: boolean;
 }
 
+const AUTH_RATE_LIMIT_CONFIG: RateLimitConfig = {
+  maxRequests: 5,
+  windowMs: 15 * 60 * 1000,
+};
+
+const getClientIpAddressFromHeaders = (): string => {
+  try {
+    const requestHeaders = headers();
+    return getClientIpAddress(requestHeaders);
+  } catch (headersError: unknown) {
+    return '127.0.0.1';
+  }
+};
+
+const checkAuthRateLimit = (clientIpAddress: string): AuthActionResult | null => {
+  const rateLimitResult = checkRateLimit(`auth:${clientIpAddress}`, AUTH_RATE_LIMIT_CONFIG);
+
+  if (!rateLimitResult.isAllowed) {
+    const remainingMilliseconds = Math.max(0, rateLimitResult.resetTimestamp - Date.now());
+    const remainingMinutes = Math.max(1, Math.ceil(remainingMilliseconds / (60 * 1000)));
+
+    return {
+      hasError: true,
+      errorMessage: `Too many attempts. Please try again in ${remainingMinutes} minutes.`,
+    };
+  }
+
+  return null;
+};
+
 export const handleSignInAction = async (
   previousState: AuthActionResult | null,
   loginFormData: FormData
 ): Promise<AuthActionResult> => {
+  const clientIpAddress = getClientIpAddressFromHeaders();
+  const rateLimitError = checkAuthRateLimit(clientIpAddress);
+  if (rateLimitError) {
+    return rateLimitError;
+  }
+
   const usernameInput = loginFormData.get('username')?.toString().trim().toLowerCase();
   const passwordInput = loginFormData.get('password')?.toString();
 
@@ -58,6 +96,12 @@ export const handleSignUpAction = async (
   previousState: AuthActionResult | null,
   registerFormData: FormData
 ): Promise<AuthActionResult> => {
+  const clientIpAddress = getClientIpAddressFromHeaders();
+  const rateLimitError = checkAuthRateLimit(clientIpAddress);
+  if (rateLimitError) {
+    return rateLimitError;
+  }
+
   const usernameInput = registerFormData.get('username')?.toString().trim().toLowerCase();
   const passwordInput = registerFormData.get('password')?.toString();
   const confirmPasswordInput = registerFormData.get('confirmPassword')?.toString();

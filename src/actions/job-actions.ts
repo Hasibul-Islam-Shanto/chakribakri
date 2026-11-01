@@ -1,9 +1,11 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/session';
 import { JobFormPayload, JobStatus } from '@/types/job';
+import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
 
 export interface JobActionResult {
   isSuccess: boolean;
@@ -12,8 +14,58 @@ export interface JobActionResult {
   createdJobId?: string;
 }
 
+const JOB_WRITE_RATE_LIMIT_CONFIG: RateLimitConfig = {
+  maxRequests: 30,
+  windowMs: 60 * 1000,
+};
+
+const getClientIpAddressFromHeaders = (): string => {
+  try {
+    const requestHeaders = headers();
+    return getClientIpAddress(requestHeaders);
+  } catch (headersError: unknown) {
+    return '127.0.0.1';
+  }
+};
+
+const verifyJobWriteRateLimit = async (): Promise<JobActionResult | null> => {
+  let sessionIdentifier: string | null = null;
+  try {
+    const userSession = await getCurrentSession();
+    if (userSession.userId && userSession.userId.trim().length > 0) {
+      sessionIdentifier = userSession.userId.trim();
+    }
+  } catch (sessionError: unknown) {
+    // Session retrieval failed; fallback to IP address
+  }
+
+  const rateLimitKey = sessionIdentifier
+    ? `job-write:user:${sessionIdentifier}`
+    : `job-write:ip:${getClientIpAddressFromHeaders()}`;
+
+  const rateLimitResult = checkRateLimit(rateLimitKey, JOB_WRITE_RATE_LIMIT_CONFIG);
+
+  if (!rateLimitResult.isAllowed) {
+    const remainingMilliseconds = Math.max(0, rateLimitResult.resetTimestamp - Date.now());
+    const remainingSeconds = Math.max(1, Math.ceil(remainingMilliseconds / 1000));
+
+    return {
+      isSuccess: false,
+      hasError: true,
+      errorMessage: `Too many write operations. Please try again in ${remainingSeconds} seconds.`,
+    };
+  }
+
+  return null;
+};
+
 export const createJobAction = async (formPayload: JobFormPayload): Promise<JobActionResult> => {
   try {
+    const rateLimitError = await verifyJobWriteRateLimit();
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     if (!formPayload.company || formPayload.company.trim().length === 0) {
       return {
         isSuccess: false,
@@ -74,6 +126,11 @@ export const updateJobAction = async (
   formPayload: JobFormPayload
 ): Promise<JobActionResult> => {
   try {
+    const rateLimitError = await verifyJobWriteRateLimit();
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     if (!jobId) {
       return {
         isSuccess: false,
@@ -139,6 +196,11 @@ export const updateJobStatusAction = async (
   targetStatus: JobStatus
 ): Promise<JobActionResult> => {
   try {
+    const rateLimitError = await verifyJobWriteRateLimit();
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     if (!jobId) {
       return {
         isSuccess: false,
@@ -172,6 +234,11 @@ export const updateJobStatusAction = async (
 
 export const deleteJobAction = async (jobId: string): Promise<JobActionResult> => {
   try {
+    const rateLimitError = await verifyJobWriteRateLimit();
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     if (!jobId) {
       return {
         isSuccess: false,

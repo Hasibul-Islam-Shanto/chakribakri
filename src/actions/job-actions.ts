@@ -4,7 +4,8 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/session';
-import { JobFormPayload, JobStatus } from '@/types/job';
+import { JobFormPayload, JobRecord, JobStatus } from '@/types/job';
+import { getAllKanbanJobs } from '@/lib/job-service';
 import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
 
 export interface JobActionResult {
@@ -266,3 +267,12 @@ export const deleteJobAction = async (jobId: string): Promise<JobActionResult> =
     };
   }
 };
+
+export const getJobsAction = async (userId?: string): Promise<JobRecord[]> => {
+  return getAllKanbanJobs(userId);
+};
+
+export const createJob = createJobAction;
+export const updateJob = updateJobAction;
+export const deleteJob = deleteJobAction;
+export const getJobs = getJobsAction;

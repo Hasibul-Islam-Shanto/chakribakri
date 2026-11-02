@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionCookie, sessionCookieName } from '@/lib/session';
-import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
+import {
+  checkRateLimit,
+  getClientIpAddress,
+  isRateLimitingEnabled,
+  RateLimitConfig,
+} from '@/lib/rate-limiter';
 
 const ROUTE_RATE_LIMIT_CONFIG: RateLimitConfig = {
   maxRequests: 120,
@@ -10,9 +15,13 @@ const ROUTE_RATE_LIMIT_CONFIG: RateLimitConfig = {
 export const middleware = async (request: NextRequest): Promise<NextResponse> => {
   const currentPath = request.nextUrl.pathname;
 
-  const isDashboardRoute = currentPath.startsWith('/dashboard') || currentPath === '/';
+  const isProtectedRoute =
+    currentPath.startsWith('/dashboard') ||
+    currentPath.startsWith('/analytics') ||
+    currentPath === '/';
+
   const isApiRoute = currentPath.startsWith('/api');
-  const shouldApplyRateLimit = currentPath.startsWith('/dashboard') || isApiRoute;
+  const shouldApplyRateLimit = (isProtectedRoute || isApiRoute) && isRateLimitingEnabled();
   const isRscPrefetchRequest = request.headers.get('RSC') === '1';
 
   if (shouldApplyRateLimit && !isRscPrefetchRequest) {
@@ -40,19 +49,62 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
 
   const sealedSessionCookie = request.cookies.get(sessionCookieName)?.value;
   const verifiedSession = await verifySessionCookie(sealedSessionCookie);
+
   const isAuthenticated = verifiedSession?.isAuthenticated ?? false;
+  const isEmailVerified = verifiedSession?.isEmailVerified ?? false;
 
   const isAuthRoute = currentPath.startsWith('/login');
+  const isVerificationRoute = currentPath.startsWith('/verify-email');
 
-  if (isDashboardRoute && !isAuthenticated) {
-    const loginRedirectUrl = new URL('/login', request.url);
-    if (currentPath !== '/') {
-      loginRedirectUrl.searchParams.set('redirectUrl', currentPath);
+  // Case 1: Unauthenticated visitors
+  if (!isAuthenticated) {
+    if (isProtectedRoute) {
+      const loginRedirectUrl = new URL('/login', request.url);
+      if (currentPath !== '/') {
+        loginRedirectUrl.searchParams.set('redirectUrl', currentPath);
+      }
+      return NextResponse.redirect(loginRedirectUrl);
     }
-    return NextResponse.redirect(loginRedirectUrl);
+
+    if (isVerificationRoute) {
+      const emailQueryParam = request.nextUrl.searchParams.get('email');
+      const hasEmailParam = Boolean(emailQueryParam && emailQueryParam.trim().length > 0);
+      if (!hasEmailParam) {
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+    }
+
+    return NextResponse.next();
   }
 
-  if (isAuthRoute && isAuthenticated) {
+  // Case 2: Authenticated but Unverified Users
+  if (!isEmailVerified) {
+    if (isProtectedRoute) {
+      const verifyRedirectUrl = new URL('/verify-email', request.url);
+      if (verifiedSession?.email) {
+        verifyRedirectUrl.searchParams.set('email', verifiedSession.email);
+      }
+      return NextResponse.redirect(verifyRedirectUrl);
+    }
+
+    if (isAuthRoute) {
+      const verifyRedirectUrl = new URL('/verify-email', request.url);
+      if (verifiedSession?.email) {
+        verifyRedirectUrl.searchParams.set('email', verifiedSession.email);
+      }
+      return NextResponse.redirect(verifyRedirectUrl);
+    }
+
+    return NextResponse.next();
+  }
+
+  // Case 3: Authenticated and Verified Users
+  if (isVerificationRoute) {
+    const dashboardRedirectUrl = new URL('/dashboard', request.url);
+    return NextResponse.redirect(dashboardRedirectUrl);
+  }
+
+  if (isAuthRoute) {
     const dashboardRedirectUrl = new URL('/dashboard', request.url);
     return NextResponse.redirect(dashboardRedirectUrl);
   }
@@ -61,5 +113,12 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
 };
 
 export const config = {
-  matcher: ['/', '/dashboard/:path*', '/login', '/api/:path*'],
+  matcher: [
+    '/',
+    '/dashboard/:path*',
+    '/analytics/:path*',
+    '/verify-email',
+    '/login',
+    '/api/:path*',
+  ],
 };

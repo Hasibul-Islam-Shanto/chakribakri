@@ -5,7 +5,13 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCurrentSession } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
-import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
+import {
+  checkRateLimit,
+  getClientIpAddress,
+  isRateLimitingEnabled,
+  RateLimitConfig,
+} from '@/lib/rate-limiter';
+import { generateSecureOtpCode, sendVerificationEmail } from '@/lib/email-service';
 
 export interface AuthActionResult {
   hasError: boolean;
@@ -28,6 +34,10 @@ const getClientIpAddressFromHeaders = (): string => {
 };
 
 const checkAuthRateLimit = (clientIpAddress: string): AuthActionResult | null => {
+  if (!isRateLimitingEnabled()) {
+    return null;
+  }
+
   const rateLimitResult = checkRateLimit(`auth:${clientIpAddress}`, AUTH_RATE_LIMIT_CONFIG);
 
   if (!rateLimitResult.isAllowed) {
@@ -53,28 +63,32 @@ export const handleSignInAction = async (
     return rateLimitError;
   }
 
-  const usernameInput = loginFormData.get('username')?.toString().trim().toLowerCase();
+  const rawIdentifier =
+    loginFormData.get('email')?.toString().trim().toLowerCase() ||
+    loginFormData.get('username')?.toString().trim().toLowerCase();
   const passwordInput = loginFormData.get('password')?.toString();
 
-  if (!usernameInput || !passwordInput) {
+  if (!rawIdentifier || !passwordInput) {
     return {
       hasError: true,
-      errorMessage: 'Username and password are required.',
+      errorMessage: 'Email/username and password are required.',
     };
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { username: usernameInput },
+  const existingUserRecord = await prisma.user.findFirst({
+    where: {
+      OR: [{ email: rawIdentifier }, { username: rawIdentifier }],
+    },
   });
 
-  if (!existingUser) {
+  if (!existingUserRecord) {
     return {
       hasError: true,
       errorMessage: 'Invalid username or password.',
     };
   }
 
-  const isPasswordValid = await bcrypt.compare(passwordInput, existingUser.passwordHash);
+  const isPasswordValid = await bcrypt.compare(passwordInput, existingUserRecord.passwordHash);
   if (!isPasswordValid) {
     return {
       hasError: true,
@@ -84,10 +98,16 @@ export const handleSignInAction = async (
 
   const userSession = await getCurrentSession();
   userSession.isAuthenticated = true;
-  userSession.userId = existingUser.id;
-  userSession.username = existingUser.username;
+  userSession.userId = existingUserRecord.id;
+  userSession.email = existingUserRecord.email;
+  userSession.username = existingUserRecord.username || existingUserRecord.email.split('@')[0];
+  userSession.isEmailVerified = Boolean(existingUserRecord.isVerified);
   userSession.loginTimestamp = Date.now();
   await userSession.save();
+
+  if (!existingUserRecord.isVerified) {
+    redirect(`/verify-email?email=${encodeURIComponent(existingUserRecord.email)}`);
+  }
 
   redirect('/dashboard');
 };
@@ -102,18 +122,23 @@ export const handleSignUpAction = async (
     return rateLimitError;
   }
 
+  const emailRawInput = registerFormData.get('email')?.toString().trim().toLowerCase();
   const usernameInput = registerFormData.get('username')?.toString().trim().toLowerCase();
   const passwordInput = registerFormData.get('password')?.toString();
   const confirmPasswordInput = registerFormData.get('confirmPassword')?.toString();
 
-  if (!usernameInput || !passwordInput) {
+  // If email is not supplied but username is supplied, derive an email for backward compatibility
+  const effectiveEmail = emailRawInput || (usernameInput ? `${usernameInput}@example.com` : '');
+  const effectiveUsername = usernameInput || (emailRawInput ? emailRawInput.split('@')[0] : '');
+
+  if ((!emailRawInput && !usernameInput) || !passwordInput) {
     return {
       hasError: true,
-      errorMessage: 'Username and password are required.',
+      errorMessage: 'Email/username and password are required.',
     };
   }
 
-  if (usernameInput.length < 3) {
+  if (effectiveUsername && effectiveUsername.length < 3) {
     return {
       hasError: true,
       errorMessage: 'Username must be at least 3 characters long.',
@@ -134,40 +159,77 @@ export const handleSignUpAction = async (
     };
   }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { username: usernameInput },
+  // Check if user already exists
+  const existingUserRecord = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: effectiveEmail },
+        ...(effectiveUsername ? [{ username: effectiveUsername }] : []),
+      ],
+    },
   });
 
-  if (existingUser) {
+  if (existingUserRecord) {
+    const isUsernameMatched = Boolean(
+      effectiveUsername &&
+      existingUserRecord.username?.toLowerCase() === effectiveUsername.toLowerCase()
+    );
     return {
       hasError: true,
-      errorMessage: 'This username is already taken. Please choose another.',
+      errorMessage: isUsernameMatched
+        ? 'This username is already taken. Please choose another.'
+        : 'An account with this email already exists.',
     };
   }
 
-  const passwordHash = await bcrypt.hash(passwordInput, 10);
+  const sanitizedPassword = String(passwordInput);
+  const passwordHash = await bcrypt.hash(sanitizedPassword, 10);
 
-  const newUser = await prisma.user.create({
+  const newUserRecord = await prisma.user.create({
     data: {
-      username: usernameInput,
+      email: effectiveEmail,
+      username: effectiveUsername || null,
       passwordHash,
+      isVerified: false,
     },
   });
 
   // Assign any orphan initial sample applications to this first user if available
   await prisma.job.updateMany({
     where: { userId: null },
-    data: { userId: newUser.id },
+    data: { userId: newUserRecord.id },
   });
+
+  // Generate 6-digit OTP code and hash it
+  const plainOtpCode = await generateSecureOtpCode();
+  const sanitizedOtpCode = String(plainOtpCode);
+  const hashedOtpCode = await bcrypt.hash(sanitizedOtpCode, 10);
+  const expirationTimestamp = new Date(Date.now() + 10 * 60 * 1000);
+
+  // Store verification token
+  await prisma.verificationToken.create({
+    data: {
+      userId: newUserRecord.id,
+      email: effectiveEmail,
+      codeHash: hashedOtpCode,
+      attemptsCount: 0,
+      expiresAt: expirationTimestamp,
+    },
+  });
+
+  // Dispatch OTP email
+  await sendVerificationEmail(effectiveEmail, sanitizedOtpCode);
 
   const userSession = await getCurrentSession();
   userSession.isAuthenticated = true;
-  userSession.userId = newUser.id;
-  userSession.username = newUser.username;
+  userSession.isEmailVerified = false;
+  userSession.userId = newUserRecord.id;
+  userSession.email = newUserRecord.email;
+  userSession.username = effectiveUsername || newUserRecord.email.split('@')[0];
   userSession.loginTimestamp = Date.now();
   await userSession.save();
 
-  redirect('/dashboard');
+  redirect(`/verify-email?email=${encodeURIComponent(effectiveEmail)}`);
 };
 
 export const handleLogoutAction = async (): Promise<void> => {

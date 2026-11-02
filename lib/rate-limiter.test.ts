@@ -4,6 +4,7 @@ import {
   pruneExpiredEntries,
   resetRateLimitStore,
   getClientIpAddress,
+  isRateLimitingEnabled,
   rateLimitStore,
   RateLimitConfig,
 } from './rate-limiter';
@@ -162,6 +163,41 @@ describe('Rate Limiting Engine (lib/rate-limiter.ts)', () => {
 
     const defaultFallbackIpResult = getClientIpAddress(null);
     expect(defaultFallbackIpResult).toBe('127.0.0.1');
+  });
+
+  it('respects environment configuration for toggling rate limiting on or off', () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalEnableRateLimiter = process.env.ENABLE_RATE_LIMITER;
+
+    try {
+      // In development by default without explicit override: disabled
+      delete process.env.ENABLE_RATE_LIMITER;
+      (process.env as Record<string, string | undefined>).NODE_ENV = 'development';
+      expect(isRateLimitingEnabled()).toBe(false);
+
+      const devResult = checkRateLimit('dev:user', testRateLimitConfig);
+      expect(devResult.isAllowed).toBe(true);
+      expect(devResult.remainingRequests).toBe(testRateLimitConfig.maxRequests);
+
+      // In production: enabled
+      (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+      expect(isRateLimitingEnabled()).toBe(true);
+
+      // Explicit override with ENABLE_RATE_LIMITER="true"
+      process.env.ENABLE_RATE_LIMITER = 'true';
+      expect(isRateLimitingEnabled()).toBe(true);
+
+      // Explicit override with ENABLE_RATE_LIMITER="false"
+      process.env.ENABLE_RATE_LIMITER = 'false';
+      expect(isRateLimitingEnabled()).toBe(false);
+    } finally {
+      (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
+      if (originalEnableRateLimiter !== undefined) {
+        process.env.ENABLE_RATE_LIMITER = originalEnableRateLimiter;
+      } else {
+        delete process.env.ENABLE_RATE_LIMITER;
+      }
+    }
   });
 });
 

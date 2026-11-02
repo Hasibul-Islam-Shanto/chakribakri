@@ -4,9 +4,15 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/session';
+import { ensureVerifiedUser } from '@/lib/auth-guard';
 import { JobFormPayload, JobRecord, JobStatus } from '@/types/job';
 import { getAllKanbanJobs } from '@/lib/job-service';
-import { checkRateLimit, getClientIpAddress, RateLimitConfig } from '@/lib/rate-limiter';
+import {
+  checkRateLimit,
+  getClientIpAddress,
+  isRateLimitingEnabled,
+  RateLimitConfig,
+} from '@/lib/rate-limiter';
 
 export interface JobActionResult {
   isSuccess: boolean;
@@ -30,6 +36,10 @@ const getClientIpAddressFromHeaders = (): string => {
 };
 
 const verifyJobWriteRateLimit = async (): Promise<JobActionResult | null> => {
+  if (!isRateLimitingEnabled()) {
+    return null;
+  }
+
   let sessionIdentifier: string | null = null;
   try {
     const userSession = await getCurrentSession();
@@ -62,6 +72,8 @@ const verifyJobWriteRateLimit = async (): Promise<JobActionResult | null> => {
 
 export const createJobAction = async (formPayload: JobFormPayload): Promise<JobActionResult> => {
   try {
+    const verifiedUserContext = await ensureVerifiedUser();
+
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
       return rateLimitError;
@@ -83,15 +95,13 @@ export const createJobAction = async (formPayload: JobFormPayload): Promise<JobA
       };
     }
 
-    const userSession = await getCurrentSession();
-
     const applicationDateParsed = formPayload.applicationDate
       ? new Date(formPayload.applicationDate)
       : new Date();
 
     const createdRecord = await prisma.job.create({
       data: {
-        userId: userSession.userId || null,
+        userId: verifiedUserContext.userId,
         company: formPayload.company.trim(),
         position: formPayload.position.trim(),
         location: formPayload.location?.trim() || null,
@@ -106,6 +116,7 @@ export const createJobAction = async (formPayload: JobFormPayload): Promise<JobA
     });
 
     revalidatePath('/dashboard');
+    revalidatePath('/analytics');
 
     return {
       isSuccess: true,
@@ -113,11 +124,15 @@ export const createJobAction = async (formPayload: JobFormPayload): Promise<JobA
       createdJobId: createdRecord.id,
     };
   } catch (creationError: unknown) {
-    console.error('Failed to create job application:', creationError);
+    const errorMessage =
+      creationError instanceof Error
+        ? creationError.message
+        : 'Failed to create job application. Please try again.';
+
     return {
       isSuccess: false,
       hasError: true,
-      errorMessage: 'Failed to create job application. Please try again.',
+      errorMessage,
     };
   }
 };
@@ -127,6 +142,8 @@ export const updateJobAction = async (
   formPayload: JobFormPayload
 ): Promise<JobActionResult> => {
   try {
+    const verifiedUserContext = await ensureVerifiedUser();
+
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
       return rateLimitError;
@@ -161,7 +178,10 @@ export const updateJobAction = async (
       : new Date();
 
     await prisma.job.update({
-      where: { id: jobId },
+      where: {
+        id: jobId,
+        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+      },
       data: {
         company: formPayload.company.trim(),
         position: formPayload.position.trim(),
@@ -177,17 +197,20 @@ export const updateJobAction = async (
     });
 
     revalidatePath('/dashboard');
+    revalidatePath('/analytics');
 
     return {
       isSuccess: true,
       hasError: false,
     };
   } catch (updateError: unknown) {
-    console.error('Failed to update job application:', updateError);
+    const errorMessage =
+      updateError instanceof Error ? updateError.message : 'Failed to update job application.';
+
     return {
       isSuccess: false,
       hasError: true,
-      errorMessage: 'Failed to update job application.',
+      errorMessage,
     };
   }
 };
@@ -197,6 +220,8 @@ export const updateJobStatusAction = async (
   targetStatus: JobStatus
 ): Promise<JobActionResult> => {
   try {
+    const verifiedUserContext = await ensureVerifiedUser();
+
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
       return rateLimitError;
@@ -211,30 +236,38 @@ export const updateJobStatusAction = async (
     }
 
     await prisma.job.update({
-      where: { id: jobId },
+      where: {
+        id: jobId,
+        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+      },
       data: {
         status: targetStatus,
       },
     });
 
     revalidatePath('/dashboard');
+    revalidatePath('/analytics');
 
     return {
       isSuccess: true,
       hasError: false,
     };
   } catch (statusError: unknown) {
-    console.error('Failed to update job status:', statusError);
+    const errorMessage =
+      statusError instanceof Error ? statusError.message : 'Failed to update status.';
+
     return {
       isSuccess: false,
       hasError: true,
-      errorMessage: 'Failed to update status.',
+      errorMessage,
     };
   }
 };
 
 export const deleteJobAction = async (jobId: string): Promise<JobActionResult> => {
   try {
+    const verifiedUserContext = await ensureVerifiedUser();
+
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
       return rateLimitError;
@@ -249,27 +282,35 @@ export const deleteJobAction = async (jobId: string): Promise<JobActionResult> =
     }
 
     await prisma.job.delete({
-      where: { id: jobId },
+      where: {
+        id: jobId,
+        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+      },
     });
 
     revalidatePath('/dashboard');
+    revalidatePath('/analytics');
 
     return {
       isSuccess: true,
       hasError: false,
     };
   } catch (deletionError: unknown) {
-    console.error('Failed to delete job application:', deletionError);
+    const errorMessage =
+      deletionError instanceof Error ? deletionError.message : 'Failed to delete job application.';
+
     return {
       isSuccess: false,
       hasError: true,
-      errorMessage: 'Failed to delete job application.',
+      errorMessage,
     };
   }
 };
 
-export const getJobsAction = async (userId?: string): Promise<JobRecord[]> => {
-  return getAllKanbanJobs(userId);
+export const getJobsAction = async (targetUserId?: string): Promise<JobRecord[]> => {
+  const verifiedUserContext = await ensureVerifiedUser();
+  const effectiveUserId = targetUserId || verifiedUserContext.userId;
+  return getAllKanbanJobs(effectiveUserId);
 };
 
 export const createJob = createJobAction;

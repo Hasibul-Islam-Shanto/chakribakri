@@ -29,6 +29,8 @@ vi.mock('next/cache', () => ({
 vi.mock('@/lib/session', () => ({
   getCurrentSession: vi.fn().mockResolvedValue({
     isAuthenticated: true,
+    isEmailVerified: true,
+    email: 'testuser@example.com',
     userId: 'isolated-test-user-id',
     username: 'testuser',
     save: vi.fn().mockResolvedValue(undefined),
@@ -50,7 +52,9 @@ describe('Job Server Actions with Test SQLite Database (actions/job-actions.test
       data: {
         id: 'isolated-test-user-id',
         username: 'testuser',
+        email: 'testuser@example.com',
         passwordHash: 'dummyhash123',
+        isVerified: true,
       },
     });
   });
@@ -166,7 +170,9 @@ describe('Job Server Actions with Test SQLite Database (actions/job-actions.test
       data: {
         id: 'another-user-id',
         username: 'anotheruser',
+        email: 'anotheruser@example.com',
         passwordHash: 'dummyhash456',
+        isVerified: true,
       },
     });
 

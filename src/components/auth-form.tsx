@@ -19,6 +19,7 @@ export interface AuthFormProps {
 }
 
 export interface ClientValidationErrors {
+  email?: string;
   username?: string;
   password?: string;
   confirmPassword?: string;
@@ -35,6 +36,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
   const [isPasswordVisible, setIsPasswordVisible] = React.useState<boolean>(false);
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = React.useState<boolean>(false);
 
+  const [emailInput, setEmailInput] = React.useState<string>('');
   const [usernameInput, setUsernameInput] = React.useState<string>('');
   const [passwordInput, setPasswordInput] = React.useState<string>('');
   const [confirmPasswordInput, setConfirmPasswordInput] = React.useState<string>('');
@@ -129,8 +131,25 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     const detectedErrors: ClientValidationErrors = {};
 
     const trimmedUsername = usernameInput.trim();
+    const trimmedEmail = emailInput.trim();
+
+    if (authMode === 'sign-up') {
+      if (trimmedEmail.length > 0) {
+        const isEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+        if (!isEmailFormatValid) {
+          detectedErrors.email = 'Please enter a valid email address.';
+        }
+      } else if (trimmedUsername.length === 0) {
+        detectedErrors.email = 'Email address is required.';
+      }
+    }
+
     if (trimmedUsername.length === 0) {
-      detectedErrors.username = 'Username is required.';
+      if (authMode === 'sign-in') {
+        detectedErrors.username = 'Username is required.';
+      } else if (trimmedEmail.length === 0) {
+        detectedErrors.username = 'Username is required.';
+      }
     } else if (authMode === 'sign-up' && trimmedUsername.length < 3) {
       detectedErrors.username = 'Username must be at least 3 characters long.';
     }
@@ -165,8 +184,16 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     setIsSubmitting(true);
     setServerActionResult(null);
 
+    const trimmedUsername = usernameInput.trim();
+    const trimmedEmail = emailInput.trim();
+    const effectiveEmail =
+      trimmedEmail ||
+      (trimmedUsername.includes('@') ? trimmedUsername : `${trimmedUsername}@example.com`);
+    const effectiveUsername = trimmedUsername || (trimmedEmail ? trimmedEmail.split('@')[0] : '');
+
     const submissionFormData = new FormData();
-    submissionFormData.append('username', usernameInput);
+    submissionFormData.append('email', effectiveEmail);
+    submissionFormData.append('username', effectiveUsername);
     submissionFormData.append('password', passwordInput);
     if (authMode === 'sign-up') {
       submissionFormData.append('confirmPassword', confirmPasswordInput);
@@ -192,9 +219,14 @@ export const AuthForm: React.FC<AuthFormProps> = ({
       if (errorString.includes('NEXT_REDIRECT')) {
         throw submissionError;
       }
+      console.error('Auth submission error:', submissionError);
+      const errorMessage =
+        submissionError instanceof Error
+          ? submissionError.message
+          : 'An unexpected error occurred. Please try again.';
       setServerActionResult({
         hasError: true,
-        errorMessage: 'An unexpected error occurred. Please try again.',
+        errorMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -291,12 +323,36 @@ export const AuthForm: React.FC<AuthFormProps> = ({
 
       {/* Form */}
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        {/* Email Field on Sign Up */}
+        {authMode === 'sign-up' && (
+          <div>
+            <Input
+              label="Email Address"
+              name="email"
+              type="email"
+              placeholder="e.g. alex@example.com"
+              autoComplete="email"
+              value={emailInput}
+              onChange={(event) => {
+                setEmailInput(event.target.value);
+                if (clientErrors.email) {
+                  setClientErrors((prevErrors) => ({ ...prevErrors, email: undefined }));
+                }
+              }}
+              hasError={Boolean(clientErrors.email)}
+              helperText={clientErrors.email}
+              disabled={isSubmitting || isRateLimited}
+              required
+            />
+          </div>
+        )}
+
         <div>
           <Input
-            label="Username"
+            label={authMode === 'sign-in' ? 'Username or Email' : 'Username'}
             name="username"
             type="text"
-            placeholder="e.g. alex"
+            placeholder={authMode === 'sign-in' ? 'e.g. alex or alex@example.com' : 'e.g. alex'}
             autoComplete="username"
             value={usernameInput}
             onChange={(event) => {

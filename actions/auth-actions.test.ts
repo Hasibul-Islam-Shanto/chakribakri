@@ -66,22 +66,22 @@ describe('Auth Server Actions with Test SQLite Database (actions/auth-actions.te
     await clearTestDatabase();
   });
 
-  it('registers a new user successfully, hashes password, saves session, and redirects to dashboard', async () => {
+  it('registers a new user successfully, hashes password, saves session, and redirects to verify-email', async () => {
     const registrationFormData = new FormData();
     registrationFormData.append('username', 'newdeveloper');
     registrationFormData.append('password', 'SuperSecurePass123!');
     registrationFormData.append('confirmPassword', 'SuperSecurePass123!');
 
-    let hasRedirectedToDashboard = false;
+    let hasRedirectedToVerification = false;
     try {
       await handleSignUpAction(null, registrationFormData);
     } catch (redirectError: unknown) {
-      if (String(redirectError).includes('NEXT_REDIRECT:/dashboard')) {
-        hasRedirectedToDashboard = true;
+      if (String(redirectError).includes('NEXT_REDIRECT:/verify-email')) {
+        hasRedirectedToVerification = true;
       }
     }
 
-    expect(hasRedirectedToDashboard).toBe(true);
+    expect(hasRedirectedToVerification).toBe(true);
     expect(mockSessionInstance.isAuthenticated).toBe(true);
     expect(mockSessionInstance.username).toBe('newdeveloper');
     expect(mockSessionInstance.save).toHaveBeenCalled();

@@ -1,8 +1,3 @@
-export interface PaginationParams {
-  currentPage: number;
-  pageSize: number;
-}
-
 export interface PaginatedResult<T> {
   itemList: T[];
   totalItemCount: number;

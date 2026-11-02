@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { AuthForm } from './auth-form';
+import { AuthForm } from '@/components/auth-form';
 import { AuthActionResult } from '@/actions/auth-actions';
 
 describe('Auth View Switcher Component (components/auth-form.test.tsx)', () => {
@@ -158,4 +158,3 @@ describe('Auth View Switcher Component (components/auth-form.test.tsx)', () => {
     expect(submitButtonElement).toBeDisabled();
   });
 });
-

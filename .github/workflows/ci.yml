@@ -65,6 +65,7 @@ jobs:
     env:
       DATABASE_URL: 'file:./test.db'
       SESSION_SECRET: 'ci_test_session_secret_at_least_32_characters_long_12345'
+      ENABLE_RATE_LIMITER: 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -94,6 +95,7 @@ jobs:
     env:
       DATABASE_URL: 'file:./test.db'
       SESSION_SECRET: 'ci_test_session_secret_at_least_32_characters_long_12345'
+      ENABLE_RATE_LIMITER: 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -5,7 +5,7 @@ import {
   isValidHttpUrl,
   isValidDateString,
   VALID_JOB_STATUSES,
-} from './job-validation';
+} from '@/lib/job-validation';
 import { JobFormPayload } from '@/types/job';
 
 describe('Job Input Validation Schemas & Utilities (lib/job-validation.ts)', () => {
@@ -125,4 +125,3 @@ describe('Job Input Validation Schemas & Utilities (lib/job-validation.ts)', () 
     );
   });
 });
-

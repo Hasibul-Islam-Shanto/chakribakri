@@ -28,7 +28,9 @@ test.describe('Job Lifecycle CRUD (e2e/job-lifecycle.spec.ts)', () => {
     await addApplicationButton.click();
 
     const addModalDialog = page.getByRole('dialog');
-    await expect(addModalDialog.getByRole('heading', { name: 'Add New Job Application' })).toBeVisible();
+    await expect(
+      addModalDialog.getByRole('heading', { name: 'Add New Job Application' })
+    ).toBeVisible();
 
     await addModalDialog.getByLabel(/Company/i).fill(targetCompany);
     await addModalDialog.getByLabel(/Position/i).fill(targetPosition);
@@ -58,7 +60,9 @@ test.describe('Job Lifecycle CRUD (e2e/job-lifecycle.spec.ts)', () => {
     await editApplicationButton.click();
 
     const editModalDialog = page.getByRole('dialog');
-    await expect(editModalDialog.getByRole('heading', { name: 'Edit Job Application' })).toBeVisible();
+    await expect(
+      editModalDialog.getByRole('heading', { name: 'Edit Job Application' })
+    ).toBeVisible();
 
     // Change status to "Interviewing"
     await editModalDialog.locator('select').selectOption('Interviewing');
@@ -72,15 +76,23 @@ test.describe('Job Lifecycle CRUD (e2e/job-lifecycle.spec.ts)', () => {
     await expect(createdJobCard).toBeVisible();
 
     // 4. Delete the job, confirm modal prompt, and ensure the card is removed
-    const deleteApplicationButton = createdJobCard.locator('button[aria-label="Delete application"]');
+    const deleteApplicationButton = createdJobCard.locator(
+      'button[aria-label="Delete application"]'
+    );
     await deleteApplicationButton.click();
 
     const deleteModalDialog = page.getByRole('dialog');
-    await expect(deleteModalDialog.getByRole('heading', { name: 'Delete Job Application' })).toBeVisible();
-    await expect(deleteModalDialog.getByText(`Are you sure you want to delete the application for`)).toBeVisible();
+    await expect(
+      deleteModalDialog.getByRole('heading', { name: 'Delete Job Application' })
+    ).toBeVisible();
+    await expect(
+      deleteModalDialog.getByText(`Are you sure you want to delete the application for`)
+    ).toBeVisible();
 
     // Confirm deletion in modal
-    const confirmDeleteButton = deleteModalDialog.getByRole('button', { name: 'Delete Application' });
+    const confirmDeleteButton = deleteModalDialog.getByRole('button', {
+      name: 'Delete Application',
+    });
     await confirmDeleteButton.click();
 
     await expect(deleteModalDialog).not.toBeVisible();

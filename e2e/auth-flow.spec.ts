@@ -82,9 +82,7 @@ test.describe('Authentication Flow (e2e/auth-flow.spec.ts)', () => {
     await expect(page.getByRole('banner').getByText(loginTestUsername)).toBeVisible();
   });
 
-  test('logout clears the active session and redirects back to /login', async ({
-    page,
-  }) => {
+  test('logout clears the active session and redirects back to /login', async ({ page }) => {
     // Register and navigate to dashboard
     const logoutUsername = `logout_${Date.now()}`;
     const logoutPassword = 'LogoutPassword789!';

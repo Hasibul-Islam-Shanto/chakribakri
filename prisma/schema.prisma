@@ -3,36 +3,40 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  username     String?  @unique
   jobs         Job[]
+
+  @@map("users")
 }
 
 model Job {
   id              String   @id @default(cuid())
-  userId          String?
+  userId          String?  @map("user_id")
   user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company         String
   position        String
   location        String?
   salary          String?
   status          String   @default("Wishlist")
-  applicationDate DateTime @default(now())
-  jobUrl          String?
+  applicationDate DateTime @default(now()) @map("application_date")
+  jobUrl          String?  @map("job_url")
   notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([status])
   @@index([company])
   @@index([position])
+  @@map("jobs")
 }

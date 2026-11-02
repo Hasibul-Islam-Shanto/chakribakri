@@ -1,11 +1,15 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
+import { getTestPrismaClient } from './test-db-setup';
 
-process.env.DATABASE_URL = 'file:./test.db';
-process.env.SESSION_SECRET =
-  'chakribakri_default_session_secret_at_least_32_characters_long_12345';
+process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
+process.env.SESSION_SECRET = 'chakribakri_default_session_secret_at_least_32_characters_long_12345';
 (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
+
+vi.mock('@/lib/prisma', () => ({
+  prisma: getTestPrismaClient(),
+}));
 
 if (typeof window !== 'undefined') {
   Object.defineProperty(window, 'matchMedia', {

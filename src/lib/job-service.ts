@@ -103,18 +103,3 @@ export const getPaginatedJobs = async (
     hasPreviousPage,
   };
 };
-
-export const getJobById = async (jobId: string): Promise<JobRecord | null> => {
-  const foundJob = await prisma.job.findUnique({
-    where: { id: jobId },
-  });
-
-  if (!foundJob) {
-    return null;
-  }
-
-  return {
-    ...foundJob,
-    status: foundJob.status as JobStatus,
-  };
-};

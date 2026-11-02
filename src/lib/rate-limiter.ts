@@ -51,6 +51,18 @@ export const resetRateLimitStore = (): void => {
   lastPruneTimestamp = Date.now();
 };
 
+export const isRateLimitingEnabled = (): boolean => {
+  if (process.env.ENABLE_RATE_LIMITER === 'true') {
+    return true;
+  }
+  if (process.env.ENABLE_RATE_LIMITER === 'false') {
+    return false;
+  }
+
+  const currentEnvironment = process.env.NODE_ENV;
+  return currentEnvironment === 'production' || currentEnvironment === 'test';
+};
+
 export const getClientIpAddress = (
   headersSource?: { get: (headerName: string) => string | null } | null,
   fallbackIpAddress: string = '127.0.0.1'
@@ -76,6 +88,14 @@ export const getClientIpAddress = (
 };
 
 export const checkRateLimit = (identifier: string, config: RateLimitConfig): RateLimitResult => {
+  if (!isRateLimitingEnabled()) {
+    return {
+      isAllowed: true,
+      remainingRequests: config.maxRequests,
+      resetTimestamp: Date.now() + config.windowMs,
+    };
+  }
+
   const currentTimestamp = Date.now();
 
   const shouldPruneStore =

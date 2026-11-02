@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Rate Limiting Protection (e2e/rate-limit.spec.ts)', () => {
+  test.use({
+    extraHTTPHeaders: {
+      'x-forwarded-for': '198.51.100.99',
+    },
+  });
+
   test('rapidly submits wrong credentials 5 times and asserts warning banner blocks subsequent attempts', async ({
     page,
   }) => {
@@ -12,7 +18,10 @@ test.describe('Rate Limiting Protection (e2e/rate-limit.spec.ts)', () => {
 
     // Submit invalid credentials up to 6 times until rate limit throttle triggers
     for (let attemptIndex = 1; attemptIndex <= 6; attemptIndex += 1) {
-      const isThrottled = await page.getByRole('alert').filter({ hasText: /Too many attempts/i }).isVisible();
+      const isThrottled = await page
+        .getByRole('alert')
+        .filter({ hasText: /Too many attempts/i })
+        .isVisible();
       if (isThrottled) {
         break;
       }

@@ -40,4 +40,3 @@ test.describe('Theme Toggling (e2e/theme-toggle.spec.ts)', () => {
     }
   });
 });
-

@@ -11,7 +11,6 @@ import {
   isRateLimitingEnabled,
   RateLimitConfig,
 } from '@/lib/rate-limiter';
-import { generateSecureOtpCode, sendVerificationEmail } from '@/lib/email-service';
 
 export interface AuthActionResult {
   hasError: boolean;
@@ -33,12 +32,18 @@ const getClientIpAddressFromHeaders = (): string => {
   }
 };
 
-const checkAuthRateLimit = (clientIpAddress: string): AuthActionResult | null => {
+const checkAuthRateLimit = (
+  clientIpAddress: string,
+  scope: 'signin' | 'signup' = 'signin'
+): AuthActionResult | null => {
   if (!isRateLimitingEnabled()) {
     return null;
   }
 
-  const rateLimitResult = checkRateLimit(`auth:${clientIpAddress}`, AUTH_RATE_LIMIT_CONFIG);
+  const rateLimitResult = checkRateLimit(
+    `auth:${scope}:${clientIpAddress}`,
+    AUTH_RATE_LIMIT_CONFIG
+  );
 
   if (!rateLimitResult.isAllowed) {
     const remainingMilliseconds = Math.max(0, rateLimitResult.resetTimestamp - Date.now());
@@ -58,7 +63,7 @@ export const handleSignInAction = async (
   loginFormData: FormData
 ): Promise<AuthActionResult> => {
   const clientIpAddress = getClientIpAddressFromHeaders();
-  const rateLimitError = checkAuthRateLimit(clientIpAddress);
+  const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signin');
   if (rateLimitError) {
     return rateLimitError;
   }
@@ -101,13 +106,8 @@ export const handleSignInAction = async (
   userSession.userId = existingUserRecord.id;
   userSession.email = existingUserRecord.email;
   userSession.username = existingUserRecord.username || existingUserRecord.email.split('@')[0];
-  userSession.isEmailVerified = Boolean(existingUserRecord.isVerified);
   userSession.loginTimestamp = Date.now();
   await userSession.save();
-
-  if (!existingUserRecord.isVerified) {
-    redirect(`/verify-email?email=${encodeURIComponent(existingUserRecord.email)}`);
-  }
 
   redirect('/dashboard');
 };
@@ -117,7 +117,7 @@ export const handleSignUpAction = async (
   registerFormData: FormData
 ): Promise<AuthActionResult> => {
   const clientIpAddress = getClientIpAddressFromHeaders();
-  const rateLimitError = checkAuthRateLimit(clientIpAddress);
+  const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signup');
   if (rateLimitError) {
     return rateLimitError;
   }
@@ -190,7 +190,6 @@ export const handleSignUpAction = async (
       email: effectiveEmail,
       username: effectiveUsername || null,
       passwordHash,
-      isVerified: false,
     },
   });
 
@@ -200,36 +199,15 @@ export const handleSignUpAction = async (
     data: { userId: newUserRecord.id },
   });
 
-  // Generate 6-digit OTP code and hash it
-  const plainOtpCode = await generateSecureOtpCode();
-  const sanitizedOtpCode = String(plainOtpCode);
-  const hashedOtpCode = await bcrypt.hash(sanitizedOtpCode, 10);
-  const expirationTimestamp = new Date(Date.now() + 10 * 60 * 1000);
-
-  // Store verification token
-  await prisma.verificationToken.create({
-    data: {
-      userId: newUserRecord.id,
-      email: effectiveEmail,
-      codeHash: hashedOtpCode,
-      attemptsCount: 0,
-      expiresAt: expirationTimestamp,
-    },
-  });
-
-  // Dispatch OTP email
-  await sendVerificationEmail(effectiveEmail, sanitizedOtpCode);
-
   const userSession = await getCurrentSession();
   userSession.isAuthenticated = true;
-  userSession.isEmailVerified = false;
   userSession.userId = newUserRecord.id;
   userSession.email = newUserRecord.email;
   userSession.username = effectiveUsername || newUserRecord.email.split('@')[0];
   userSession.loginTimestamp = Date.now();
   await userSession.save();
 
-  redirect(`/verify-email?email=${encodeURIComponent(effectiveEmail)}`);
+  redirect('/dashboard');
 };
 
 export const handleLogoutAction = async (): Promise<void> => {

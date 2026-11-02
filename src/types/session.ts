@@ -3,6 +3,5 @@ export interface SessionData {
   userId?: string;
   email?: string;
   username: string;
-  isEmailVerified?: boolean;
   loginTimestamp?: number;
 }

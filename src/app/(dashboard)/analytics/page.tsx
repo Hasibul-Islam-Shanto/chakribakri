@@ -3,7 +3,7 @@ import { Metadata } from 'next';
 import { Navbar } from '@/components/layout/navbar';
 import { AnalyticsDashboardView } from '@/components/analytics/analytics-dashboard-view';
 import { computeAnalyticsData } from '@/lib/analytics-service';
-import { ensureVerifiedUser } from '@/lib/auth-guard';
+import { ensureAuthenticatedUser } from '@/lib/auth-guard';
 import { AnalyticsTimeframe } from '@/types/analytics';
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     'Interactive analytics dashboard displaying application velocity, funnel conversions, and monthly trajectories.',
 };
 
-export const revalidate = 0; // Dynamic fresh computations
+export const revalidate = 0;
 
 export interface AnalyticsPageProps {
   searchParams: {
@@ -21,7 +21,7 @@ export interface AnalyticsPageProps {
 }
 
 const AnalyticsPage: React.FC<AnalyticsPageProps> = async ({ searchParams }) => {
-  const verifiedUserContext = await ensureVerifiedUser();
+  const authenticatedUser = await ensureAuthenticatedUser();
 
   const validTimeframes: AnalyticsTimeframe[] = ['30days', '6months', '1year', 'all'];
   const requestedTimeframe = searchParams.timeframe as AnalyticsTimeframe;
@@ -30,14 +30,14 @@ const AnalyticsPage: React.FC<AnalyticsPageProps> = async ({ searchParams }) => 
     : '6months';
 
   const analyticsDashboardData = await computeAnalyticsData(
-    verifiedUserContext.userId,
+    authenticatedUser.userId,
     effectiveTimeframe
   );
 
   return (
     <>
       <Navbar
-        username={verifiedUserContext.username || verifiedUserContext.email.split('@')[0]}
+        username={authenticatedUser.username || authenticatedUser.email.split('@')[0]}
         showViewSwitcher={false}
       />
 

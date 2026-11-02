@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getAnalyticsDataAction } from './analytics-actions';
+import { getAnalyticsDataAction } from '@/actions/analytics-actions';
 import {
   clearTestDatabase,
   getTestPrismaClient,
@@ -9,10 +9,9 @@ import {
 
 const mockSessionInstance = {
   isAuthenticated: true,
-  isEmailVerified: true,
-  userId: 'analytics-user-id',
-  email: 'analytics@example.com',
-  username: 'analyticsuser',
+  userId: 'analytics-user-id' as string | undefined,
+  email: 'analytics@example.com' as string | undefined,
+  username: 'analyticsuser' as string | undefined,
   save: vi.fn().mockResolvedValue(undefined),
   destroy: vi.fn().mockReturnValue(undefined),
 };
@@ -29,7 +28,6 @@ describe('Analytics Server Actions (actions/analytics-actions.test.ts)', () => {
   beforeEach(async () => {
     await clearTestDatabase();
     mockSessionInstance.isAuthenticated = true;
-    mockSessionInstance.isEmailVerified = true;
     mockSessionInstance.userId = 'analytics-user-id';
     mockSessionInstance.email = 'analytics@example.com';
 
@@ -39,7 +37,6 @@ describe('Analytics Server Actions (actions/analytics-actions.test.ts)', () => {
         username: 'analyticsuser',
         email: 'analytics@example.com',
         passwordHash: 'dummyhash',
-        isVerified: true,
       },
     });
   });
@@ -48,20 +45,15 @@ describe('Analytics Server Actions (actions/analytics-actions.test.ts)', () => {
     await clearTestDatabase();
   });
 
-  it('rejects analytics query if user is unverified', async () => {
-    mockSessionInstance.isEmailVerified = false;
+  it('rejects analytics query if user is unauthenticated', async () => {
+    mockSessionInstance.isAuthenticated = false;
+    mockSessionInstance.userId = undefined;
 
-    // Update user in DB to unverified as well
-    await prismaClient.user.update({
-      where: { id: 'analytics-user-id' },
-      data: { isVerified: false },
-    });
+    const unauthenticatedResult = await getAnalyticsDataAction('6months');
 
-    const unverifiedResult = await getAnalyticsDataAction('6months');
-
-    expect(unverifiedResult.isSuccess).toBe(false);
-    expect(unverifiedResult.hasError).toBe(true);
-    expect(unverifiedResult.errorMessage).toContain('verification required');
+    expect(unauthenticatedResult.isSuccess).toBe(false);
+    expect(unauthenticatedResult.hasError).toBe(true);
+    expect(unauthenticatedResult.errorMessage).toContain('Authentication required');
   });
 
   it('computes accurate KPI summary for user job application records', async () => {
@@ -147,4 +139,3 @@ describe('Analytics Server Actions (actions/analytics-actions.test.ts)', () => {
     expect(offerStatus?.percentage).toBe(25);
   });
 });
-

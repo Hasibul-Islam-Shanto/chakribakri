@@ -42,7 +42,7 @@ describe('Core Utility Functions (lib/utils.ts)', () => {
       expect(formattedStringInput).toBe('2026-12-01');
     });
 
-    it('returns today\'s date formatted as YYYY-MM-DD for missing or invalid inputs', () => {
+    it("returns today's date formatted as YYYY-MM-DD for missing or invalid inputs", () => {
       const todayIsoDatePrefix = new Date().toISOString().split('T')[0];
 
       expect(formatDateInput(null)).toBe(todayIsoDatePrefix);
@@ -53,13 +53,7 @@ describe('Core Utility Functions (lib/utils.ts)', () => {
 
   describe('getStatusBadgeStyle', () => {
     it('returns distinct style classes and dot indicators for all JobStatus values', () => {
-      const statusList: JobStatus[] = [
-        'Wishlist',
-        'Applied',
-        'Interviewing',
-        'Offer',
-        'Rejected',
-      ];
+      const statusList: JobStatus[] = ['Wishlist', 'Applied', 'Interviewing', 'Offer', 'Rejected'];
 
       statusList.forEach((statusItem) => {
         const badgeStyle = getStatusBadgeStyle(statusItem);
@@ -85,4 +79,3 @@ describe('Core Utility Functions (lib/utils.ts)', () => {
     });
   });
 });
-

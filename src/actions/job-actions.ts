@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getCurrentSession } from '@/lib/session';
-import { ensureVerifiedUser } from '@/lib/auth-guard';
+import { ensureAuthenticatedUser } from '@/lib/auth-guard';
 import { JobFormPayload, JobRecord, JobStatus } from '@/types/job';
 import { getAllKanbanJobs } from '@/lib/job-service';
 import {
@@ -72,7 +72,7 @@ const verifyJobWriteRateLimit = async (): Promise<JobActionResult | null> => {
 
 export const createJobAction = async (formPayload: JobFormPayload): Promise<JobActionResult> => {
   try {
-    const verifiedUserContext = await ensureVerifiedUser();
+    const authenticatedUser = await ensureAuthenticatedUser();
 
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
@@ -101,7 +101,7 @@ export const createJobAction = async (formPayload: JobFormPayload): Promise<JobA
 
     const createdRecord = await prisma.job.create({
       data: {
-        userId: verifiedUserContext.userId,
+        userId: authenticatedUser.userId,
         company: formPayload.company.trim(),
         position: formPayload.position.trim(),
         location: formPayload.location?.trim() || null,
@@ -142,7 +142,7 @@ export const updateJobAction = async (
   formPayload: JobFormPayload
 ): Promise<JobActionResult> => {
   try {
-    const verifiedUserContext = await ensureVerifiedUser();
+    const authenticatedUser = await ensureAuthenticatedUser();
 
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
@@ -180,7 +180,7 @@ export const updateJobAction = async (
     await prisma.job.update({
       where: {
         id: jobId,
-        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+        ...(authenticatedUser.userId ? { userId: authenticatedUser.userId } : {}),
       },
       data: {
         company: formPayload.company.trim(),
@@ -220,7 +220,7 @@ export const updateJobStatusAction = async (
   targetStatus: JobStatus
 ): Promise<JobActionResult> => {
   try {
-    const verifiedUserContext = await ensureVerifiedUser();
+    const authenticatedUser = await ensureAuthenticatedUser();
 
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
@@ -238,7 +238,7 @@ export const updateJobStatusAction = async (
     await prisma.job.update({
       where: {
         id: jobId,
-        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+        ...(authenticatedUser.userId ? { userId: authenticatedUser.userId } : {}),
       },
       data: {
         status: targetStatus,
@@ -266,7 +266,7 @@ export const updateJobStatusAction = async (
 
 export const deleteJobAction = async (jobId: string): Promise<JobActionResult> => {
   try {
-    const verifiedUserContext = await ensureVerifiedUser();
+    const authenticatedUser = await ensureAuthenticatedUser();
 
     const rateLimitError = await verifyJobWriteRateLimit();
     if (rateLimitError) {
@@ -284,7 +284,7 @@ export const deleteJobAction = async (jobId: string): Promise<JobActionResult> =
     await prisma.job.delete({
       where: {
         id: jobId,
-        ...(verifiedUserContext.userId ? { userId: verifiedUserContext.userId } : {}),
+        ...(authenticatedUser.userId ? { userId: authenticatedUser.userId } : {}),
       },
     });
 
@@ -308,8 +308,8 @@ export const deleteJobAction = async (jobId: string): Promise<JobActionResult> =
 };
 
 export const getJobsAction = async (targetUserId?: string): Promise<JobRecord[]> => {
-  const verifiedUserContext = await ensureVerifiedUser();
-  const effectiveUserId = targetUserId || verifiedUserContext.userId;
+  const authenticatedUser = await ensureAuthenticatedUser();
+  const effectiveUserId = targetUserId || authenticatedUser.userId;
   return getAllKanbanJobs(effectiveUserId);
 };
 

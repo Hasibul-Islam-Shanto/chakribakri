@@ -7,12 +7,8 @@ import {
   signUp,
   logout,
   AuthActionResult,
-} from './auth-actions';
-import {
-  clearTestDatabase,
-  getTestPrismaClient,
-  createTestUser,
-} from '../tests/test-db-setup';
+} from '@/actions/auth-actions';
+import { clearTestDatabase, getTestPrismaClient, createTestUser } from '../tests/test-db-setup';
 import { resetRateLimitStore } from '@/lib/rate-limiter';
 import bcrypt from 'bcryptjs';
 
@@ -66,22 +62,22 @@ describe('Auth Server Actions with Test SQLite Database (actions/auth-actions.te
     await clearTestDatabase();
   });
 
-  it('registers a new user successfully, hashes password, saves session, and redirects to verify-email', async () => {
+  it('registers a new user successfully, hashes password, saves session, and redirects to dashboard', async () => {
     const registrationFormData = new FormData();
     registrationFormData.append('username', 'newdeveloper');
     registrationFormData.append('password', 'SuperSecurePass123!');
     registrationFormData.append('confirmPassword', 'SuperSecurePass123!');
 
-    let hasRedirectedToVerification = false;
+    let hasRedirectedToDashboard = false;
     try {
       await handleSignUpAction(null, registrationFormData);
     } catch (redirectError: unknown) {
-      if (String(redirectError).includes('NEXT_REDIRECT:/verify-email')) {
-        hasRedirectedToVerification = true;
+      if (String(redirectError).includes('NEXT_REDIRECT:/dashboard')) {
+        hasRedirectedToDashboard = true;
       }
     }
 
-    expect(hasRedirectedToVerification).toBe(true);
+    expect(hasRedirectedToDashboard).toBe(true);
     expect(mockSessionInstance.isAuthenticated).toBe(true);
     expect(mockSessionInstance.username).toBe('newdeveloper');
     expect(mockSessionInstance.save).toHaveBeenCalled();
@@ -126,10 +122,7 @@ describe('Auth Server Actions with Test SQLite Database (actions/auth-actions.te
     mismatchFormData.append('password', 'password123');
     mismatchFormData.append('confirmPassword', 'differentpassword');
 
-    const registrationResult: AuthActionResult = await handleSignUpAction(
-      null,
-      mismatchFormData
-    );
+    const registrationResult: AuthActionResult = await handleSignUpAction(null, mismatchFormData);
 
     expect(registrationResult.hasError).toBe(true);
     expect(registrationResult.errorMessage).toBe('Passwords do not match.');
@@ -163,10 +156,7 @@ describe('Auth Server Actions with Test SQLite Database (actions/auth-actions.te
     wrongPasswordFormData.append('username', 'registereduser');
     wrongPasswordFormData.append('password', 'wrongpassword');
 
-    const loginResult: AuthActionResult = await handleSignInAction(
-      null,
-      wrongPasswordFormData
-    );
+    const loginResult: AuthActionResult = await handleSignInAction(null, wrongPasswordFormData);
 
     expect(loginResult.hasError).toBe(true);
     expect(loginResult.errorMessage).toBe('Invalid username or password.');
@@ -213,4 +203,3 @@ describe('Auth Server Actions with Test SQLite Database (actions/auth-actions.te
     expect(mockSessionInstance.destroy).toHaveBeenCalled();
   });
 });
-

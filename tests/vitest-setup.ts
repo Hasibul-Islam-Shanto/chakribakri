@@ -4,8 +4,7 @@ import { afterEach, vi } from 'vitest';
 import { getTestPrismaClient } from './test-db-setup';
 
 process.env.DATABASE_URL = 'postgresql://dummy:dummy@localhost:5432/dummy';
-process.env.SESSION_SECRET =
-  'chakribakri_default_session_secret_at_least_32_characters_long_12345';
+process.env.SESSION_SECRET = 'chakribakri_default_session_secret_at_least_32_characters_long_12345';
 (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
 
 vi.mock('@/lib/prisma', () => ({

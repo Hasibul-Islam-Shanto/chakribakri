@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { JobDashboard } from './job-dashboard';
+import { JobDashboard } from '@/components/dashboard/job-dashboard';
 import { JobRecord } from '@/types/job';
 
 vi.mock('next/navigation', () => ({

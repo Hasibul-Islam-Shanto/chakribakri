@@ -51,12 +51,9 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
   const verifiedSession = await verifySessionCookie(sealedSessionCookie);
 
   const isAuthenticated = verifiedSession?.isAuthenticated ?? false;
-  const isEmailVerified = verifiedSession?.isEmailVerified ?? false;
-
   const isAuthRoute = currentPath.startsWith('/login');
-  const isVerificationRoute = currentPath.startsWith('/verify-email');
 
-  // Case 1: Unauthenticated visitors
+  // Case 1: Unauthenticated visitors trying to access protected routes
   if (!isAuthenticated) {
     if (isProtectedRoute) {
       const loginRedirectUrl = new URL('/login', request.url);
@@ -66,44 +63,10 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
       return NextResponse.redirect(loginRedirectUrl);
     }
 
-    if (isVerificationRoute) {
-      const emailQueryParam = request.nextUrl.searchParams.get('email');
-      const hasEmailParam = Boolean(emailQueryParam && emailQueryParam.trim().length > 0);
-      if (!hasEmailParam) {
-        return NextResponse.redirect(new URL('/login', request.url));
-      }
-    }
-
     return NextResponse.next();
   }
 
-  // Case 2: Authenticated but Unverified Users
-  if (!isEmailVerified) {
-    if (isProtectedRoute) {
-      const verifyRedirectUrl = new URL('/verify-email', request.url);
-      if (verifiedSession?.email) {
-        verifyRedirectUrl.searchParams.set('email', verifiedSession.email);
-      }
-      return NextResponse.redirect(verifyRedirectUrl);
-    }
-
-    if (isAuthRoute) {
-      const verifyRedirectUrl = new URL('/verify-email', request.url);
-      if (verifiedSession?.email) {
-        verifyRedirectUrl.searchParams.set('email', verifiedSession.email);
-      }
-      return NextResponse.redirect(verifyRedirectUrl);
-    }
-
-    return NextResponse.next();
-  }
-
-  // Case 3: Authenticated and Verified Users
-  if (isVerificationRoute) {
-    const dashboardRedirectUrl = new URL('/dashboard', request.url);
-    return NextResponse.redirect(dashboardRedirectUrl);
-  }
-
+  // Case 2: Authenticated users trying to access auth routes
   if (isAuthRoute) {
     const dashboardRedirectUrl = new URL('/dashboard', request.url);
     return NextResponse.redirect(dashboardRedirectUrl);
@@ -113,12 +76,5 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
 };
 
 export const config = {
-  matcher: [
-    '/',
-    '/dashboard/:path*',
-    '/analytics/:path*',
-    '/verify-email',
-    '/login',
-    '/api/:path*',
-  ],
+  matcher: ['/', '/dashboard/:path*', '/analytics/:path*', '/login', '/api/:path*'],
 };

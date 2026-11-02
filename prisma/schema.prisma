@@ -8,32 +8,15 @@ datasource db {
 }
 
 model User {
-  id                 String              @id @default(uuid())
-  email              String              @unique
-  passwordHash       String              @map("password_hash")
-  isVerified         Boolean             @default(false) @map("is_verified")
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  username           String?             @unique
-  jobs               Job[]
-  verificationTokens VerificationToken[]
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  username     String?  @unique
+  jobs         Job[]
 
   @@map("users")
-}
-
-model VerificationToken {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email         String
-  codeHash      String   @map("code_hash")
-  attemptsCount Int      @default(0) @map("attempts_count")
-  expiresAt     DateTime @map("expires_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  @@index([email])
-  @@index([userId])
-  @@map("verification_tokens")
 }
 
 model Job {

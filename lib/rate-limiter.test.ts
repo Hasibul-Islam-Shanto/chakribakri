@@ -7,7 +7,7 @@ import {
   isRateLimitingEnabled,
   rateLimitStore,
   RateLimitConfig,
-} from './rate-limiter';
+} from '@/lib/rate-limiter';
 
 describe('Rate Limiting Engine (lib/rate-limiter.ts)', () => {
   const testRateLimitConfig: RateLimitConfig = {
@@ -200,4 +200,3 @@ describe('Rate Limiting Engine (lib/rate-limiter.ts)', () => {
     }
   });
 });
-

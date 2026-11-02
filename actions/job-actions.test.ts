@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  createJob,
-  updateJob,
-  deleteJob,
-  getJobs,
-  JobActionResult,
-} from './job-actions';
+import { createJob, updateJob, deleteJob, getJobs, JobActionResult } from '@/actions/job-actions';
 import {
   clearTestDatabase,
   getTestPrismaClient,
@@ -29,7 +23,6 @@ vi.mock('next/cache', () => ({
 vi.mock('@/lib/session', () => ({
   getCurrentSession: vi.fn().mockResolvedValue({
     isAuthenticated: true,
-    isEmailVerified: true,
     email: 'testuser@example.com',
     userId: 'isolated-test-user-id',
     username: 'testuser',
@@ -54,7 +47,6 @@ describe('Job Server Actions with Test SQLite Database (actions/job-actions.test
         username: 'testuser',
         email: 'testuser@example.com',
         passwordHash: 'dummyhash123',
-        isVerified: true,
       },
     });
   });
@@ -172,7 +164,6 @@ describe('Job Server Actions with Test SQLite Database (actions/job-actions.test
         username: 'anotheruser',
         email: 'anotheruser@example.com',
         passwordHash: 'dummyhash456',
-        isVerified: true,
       },
     });
 

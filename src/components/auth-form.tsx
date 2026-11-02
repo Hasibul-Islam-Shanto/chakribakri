@@ -220,10 +220,17 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         throw submissionError;
       }
       console.error('Auth submission error:', submissionError);
-      const errorMessage =
+      let errorMessage =
         submissionError instanceof Error
           ? submissionError.message
           : 'An unexpected error occurred. Please try again.';
+      if (
+        errorMessage.includes('Server Components render') ||
+        errorMessage.includes('digest property')
+      ) {
+        errorMessage =
+          'A server error occurred during account creation. Please verify database connectivity or check server logs.';
+      }
       setServerActionResult({
         hasError: true,
         errorMessage,

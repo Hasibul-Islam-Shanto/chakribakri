@@ -58,162 +58,211 @@ const checkAuthRateLimit = (
   return null;
 };
 
+const isRedirectError = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  return (
+    ('digest' in error &&
+      typeof (error as { digest: string }).digest === 'string' &&
+      (error as { digest: string }).digest.startsWith('NEXT_REDIRECT')) ||
+    ('message' in error &&
+      typeof (error as { message: string }).message === 'string' &&
+      (error as { message: string }).message.includes('NEXT_REDIRECT'))
+  );
+};
+
 export const handleSignInAction = async (
   previousState: AuthActionResult | null,
   loginFormData: FormData
 ): Promise<AuthActionResult> => {
-  const clientIpAddress = getClientIpAddressFromHeaders();
-  const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signin');
-  if (rateLimitError) {
-    return rateLimitError;
-  }
+  try {
+    const clientIpAddress = getClientIpAddressFromHeaders();
+    const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signin');
+    if (rateLimitError) {
+      return rateLimitError;
+    }
 
-  const rawIdentifier =
-    loginFormData.get('email')?.toString().trim().toLowerCase() ||
-    loginFormData.get('username')?.toString().trim().toLowerCase();
-  const passwordInput = loginFormData.get('password')?.toString();
+    const rawIdentifier =
+      loginFormData.get('email')?.toString().trim().toLowerCase() ||
+      loginFormData.get('username')?.toString().trim().toLowerCase();
+    const passwordInput = loginFormData.get('password')?.toString();
 
-  if (!rawIdentifier || !passwordInput) {
+    if (!rawIdentifier || !passwordInput) {
+      return {
+        hasError: true,
+        errorMessage: 'Email/username and password are required.',
+      };
+    }
+
+    const existingUserRecord = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: rawIdentifier }, { username: rawIdentifier }],
+      },
+    });
+
+    if (!existingUserRecord) {
+      return {
+        hasError: true,
+        errorMessage: 'Invalid username or password.',
+      };
+    }
+
+    const isPasswordValid = await bcrypt.compare(passwordInput, existingUserRecord.passwordHash);
+    if (!isPasswordValid) {
+      return {
+        hasError: true,
+        errorMessage: 'Invalid username or password.',
+      };
+    }
+
+    const userSession = await getCurrentSession();
+    userSession.isAuthenticated = true;
+    userSession.userId = existingUserRecord.id;
+    userSession.email = existingUserRecord.email;
+    userSession.username = existingUserRecord.username || existingUserRecord.email.split('@')[0];
+    userSession.loginTimestamp = Date.now();
+    await userSession.save();
+
+    redirect('/dashboard');
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('Sign in error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Invalid username or password.';
     return {
       hasError: true,
-      errorMessage: 'Email/username and password are required.',
+      errorMessage,
     };
   }
-
-  const existingUserRecord = await prisma.user.findFirst({
-    where: {
-      OR: [{ email: rawIdentifier }, { username: rawIdentifier }],
-    },
-  });
-
-  if (!existingUserRecord) {
-    return {
-      hasError: true,
-      errorMessage: 'Invalid username or password.',
-    };
-  }
-
-  const isPasswordValid = await bcrypt.compare(passwordInput, existingUserRecord.passwordHash);
-  if (!isPasswordValid) {
-    return {
-      hasError: true,
-      errorMessage: 'Invalid username or password.',
-    };
-  }
-
-  const userSession = await getCurrentSession();
-  userSession.isAuthenticated = true;
-  userSession.userId = existingUserRecord.id;
-  userSession.email = existingUserRecord.email;
-  userSession.username = existingUserRecord.username || existingUserRecord.email.split('@')[0];
-  userSession.loginTimestamp = Date.now();
-  await userSession.save();
-
-  redirect('/dashboard');
 };
 
 export const handleSignUpAction = async (
   previousState: AuthActionResult | null,
   registerFormData: FormData
 ): Promise<AuthActionResult> => {
-  const clientIpAddress = getClientIpAddressFromHeaders();
-  const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signup');
-  if (rateLimitError) {
-    return rateLimitError;
-  }
+  try {
+    const clientIpAddress = getClientIpAddressFromHeaders();
+    const rateLimitError = checkAuthRateLimit(clientIpAddress, 'signup');
+    if (rateLimitError) {
+      return rateLimitError;
+    }
 
-  const emailRawInput = registerFormData.get('email')?.toString().trim().toLowerCase();
-  const usernameInput = registerFormData.get('username')?.toString().trim().toLowerCase();
-  const passwordInput = registerFormData.get('password')?.toString();
-  const confirmPasswordInput = registerFormData.get('confirmPassword')?.toString();
+    const emailRawInput = registerFormData.get('email')?.toString().trim().toLowerCase();
+    const usernameInput = registerFormData.get('username')?.toString().trim().toLowerCase();
+    const passwordInput = registerFormData.get('password')?.toString();
+    const confirmPasswordInput = registerFormData.get('confirmPassword')?.toString();
 
-  // If email is not supplied but username is supplied, derive an email for backward compatibility
-  const effectiveEmail = emailRawInput || (usernameInput ? `${usernameInput}@example.com` : '');
-  const effectiveUsername = usernameInput || (emailRawInput ? emailRawInput.split('@')[0] : '');
+    // If email is not supplied but username is supplied, derive an email for backward compatibility
+    const effectiveEmail = emailRawInput || (usernameInput ? `${usernameInput}@example.com` : '');
+    const effectiveUsername = usernameInput || (emailRawInput ? emailRawInput.split('@')[0] : '');
 
-  if ((!emailRawInput && !usernameInput) || !passwordInput) {
+    if ((!emailRawInput && !usernameInput) || !passwordInput) {
+      return {
+        hasError: true,
+        errorMessage: 'Email/username and password are required.',
+      };
+    }
+
+    if (effectiveUsername && effectiveUsername.length < 3) {
+      return {
+        hasError: true,
+        errorMessage: 'Username must be at least 3 characters long.',
+      };
+    }
+
+    if (passwordInput.length < 6) {
+      return {
+        hasError: true,
+        errorMessage: 'Password must be at least 6 characters long.',
+      };
+    }
+
+    if (passwordInput !== confirmPasswordInput) {
+      return {
+        hasError: true,
+        errorMessage: 'Passwords do not match.',
+      };
+    }
+
+    // Check if user already exists
+    const existingUserRecord = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: effectiveEmail },
+          ...(effectiveUsername ? [{ username: effectiveUsername }] : []),
+        ],
+      },
+    });
+
+    if (existingUserRecord) {
+      const isUsernameMatched = Boolean(
+        effectiveUsername &&
+        existingUserRecord.username?.toLowerCase() === effectiveUsername.toLowerCase()
+      );
+      return {
+        hasError: true,
+        errorMessage: isUsernameMatched
+          ? 'This username is already taken. Please choose another.'
+          : 'An account with this email already exists.',
+      };
+    }
+
+    const sanitizedPassword = String(passwordInput);
+    const passwordHash = await bcrypt.hash(sanitizedPassword, 10);
+
+    const newUserRecord = await prisma.user.create({
+      data: {
+        email: effectiveEmail,
+        username: effectiveUsername || null,
+        passwordHash,
+      },
+    });
+
+    // Assign any orphan initial sample applications to this first user if available
+    await prisma.job.updateMany({
+      where: { userId: null },
+      data: { userId: newUserRecord.id },
+    });
+
+    const userSession = await getCurrentSession();
+    userSession.isAuthenticated = true;
+    userSession.userId = newUserRecord.id;
+    userSession.email = newUserRecord.email;
+    userSession.username = effectiveUsername || newUserRecord.email.split('@')[0];
+    userSession.loginTimestamp = Date.now();
+    await userSession.save();
+
+    redirect('/dashboard');
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('Sign up error:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'Registration failed. Please try again.';
     return {
       hasError: true,
-      errorMessage: 'Email/username and password are required.',
+      errorMessage,
     };
   }
-
-  if (effectiveUsername && effectiveUsername.length < 3) {
-    return {
-      hasError: true,
-      errorMessage: 'Username must be at least 3 characters long.',
-    };
-  }
-
-  if (passwordInput.length < 6) {
-    return {
-      hasError: true,
-      errorMessage: 'Password must be at least 6 characters long.',
-    };
-  }
-
-  if (passwordInput !== confirmPasswordInput) {
-    return {
-      hasError: true,
-      errorMessage: 'Passwords do not match.',
-    };
-  }
-
-  // Check if user already exists
-  const existingUserRecord = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: effectiveEmail },
-        ...(effectiveUsername ? [{ username: effectiveUsername }] : []),
-      ],
-    },
-  });
-
-  if (existingUserRecord) {
-    const isUsernameMatched = Boolean(
-      effectiveUsername &&
-      existingUserRecord.username?.toLowerCase() === effectiveUsername.toLowerCase()
-    );
-    return {
-      hasError: true,
-      errorMessage: isUsernameMatched
-        ? 'This username is already taken. Please choose another.'
-        : 'An account with this email already exists.',
-    };
-  }
-
-  const sanitizedPassword = String(passwordInput);
-  const passwordHash = await bcrypt.hash(sanitizedPassword, 10);
-
-  const newUserRecord = await prisma.user.create({
-    data: {
-      email: effectiveEmail,
-      username: effectiveUsername || null,
-      passwordHash,
-    },
-  });
-
-  // Assign any orphan initial sample applications to this first user if available
-  await prisma.job.updateMany({
-    where: { userId: null },
-    data: { userId: newUserRecord.id },
-  });
-
-  const userSession = await getCurrentSession();
-  userSession.isAuthenticated = true;
-  userSession.userId = newUserRecord.id;
-  userSession.email = newUserRecord.email;
-  userSession.username = effectiveUsername || newUserRecord.email.split('@')[0];
-  userSession.loginTimestamp = Date.now();
-  await userSession.save();
-
-  redirect('/dashboard');
 };
 
 export const handleLogoutAction = async (): Promise<void> => {
-  const userSession = await getCurrentSession();
-  userSession.destroy();
-  redirect('/login');
+  try {
+    const userSession = await getCurrentSession();
+    userSession.destroy();
+    redirect('/login');
+  } catch (error: unknown) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    console.error('Logout error:', error);
+    redirect('/login');
+  }
 };
 
 export const signIn = handleSignInAction;
